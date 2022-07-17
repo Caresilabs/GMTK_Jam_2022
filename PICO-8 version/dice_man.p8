@@ -1,0 +1,688 @@
+pico-8 cartridge // http://www.pico-8.com
+version 35
+__lua__
+
+is_debug = false
+
+function _init()
+	init_player()
+	init_camera(0, 0)
+	upgrade_c = 0
+end
+
+function _update60()
+	tim = time()
+
+	update_player()
+	update_camera()
+	handle_upgrade()
+	update_tile_animations()
+	foreach(particles, update_particle)
+end
+
+function handle_upgrade()
+	if upgrade_c > 5.5 then 
+		upgrade_c -= 0.01
+	else 
+		upgrade_c = lerp(upgrade_c, 0, 0.1)
+	end 
+end 
+
+function _draw()
+	cls()
+	camera_w_shake()
+	draw_camera()
+	map(0,0,0,0,128,128)
+	foreach(particles, draw_particle)
+	draw_player()
+
+	camera() -- ui
+
+	if is_debug then 
+		rectfill(0,0, 24, 32, 0)
+		print(p1state, 4, 4, 8)
+		print(p1gracejumpc, 4, 12, 9)
+		print(p1acc,4, 20, 7)
+		print(p1hasbouncedc, 4, 30, 10)
+	else
+		draw_ui()
+	end
+end
+
+tile_c = 0
+tile_t = 30
+function update_tile_animations()
+	if tile_c < tile_t then 
+		tile_c += 1
+	else 
+		tile_c = 0
+		
+		for x=0,15 do 
+			for y=0,15 do
+				local gx = cam_x + x * 8
+				local gy = cam_y + y * 8
+				local tile = get_tile(gx, gy)
+
+				if tile == 25 or tile == 26 then -- coin
+					set_tile(gx, gy, tile == 25 and 26 or 25)
+				elseif tile == 48 or tile == 49 then -- lava
+					set_tile(gx, gy, tile == 48 and 49 or 48)
+					if (rnd(1) < 0.05)init_particle(gx+4, gy+4, 0.25, rnd(1)-0.1, 2.2, 2, true)
+				elseif tile == 27 or tile == 28 then -- lava
+					set_tile(gx, gy, tile == 27 and 28 or 27)
+				end
+			end
+		end
+	end
+end
+
+function check_tile_collisions()
+	local mx = p1x+4
+	local my = p1y+4
+	if is_flag(mx, my, 1) then 
+		destroy_player()
+	elseif is_flag(mx, my, 2) then 
+		set_tile(mx, my, 0)
+		init_particle(p1x + 4, p1y + 4, 0.25, 0.5, 4, 9)
+	elseif is_flag(mx, my, 3) then 
+		set_tile(mx, my, 0)
+		
+		if p1nrofjumps < 6 then 
+			p1nrofjumps += 1
+			upgrade_c = 6
+		end
+		init_particle(p1x + 4, p1y + 4, 0.25, 1, 4, 6, true)
+	end  
+end 
+
+function draw_ui()
+	rect(0, 0, 127, 127, 1)
+	fillp(▒)
+	rect(1, 1, 126, 126, 1)
+	fillp()
+	rectfill(0, 0, 14 + p1uijump, 10, 1)
+	circfill(16 + p1uijump / 2, 0, 9, 1)
+	spr(3 + p1currentjump, 1 + p1uijump, 1)
+	print(p1currentjump, 12 + p1uijump, 2, 7)
+
+	if upgrade_c > 0.2 then
+		local y = upgrade_c
+		rectfill(30, 0, 79, y + 2, 1)
+		print("upgrade die!", 32, y-4, 7)
+	end 
+end
+
+-->8
+-- player
+function init_player()
+	p1x = 12
+	p1y = 100
+	p1ox = 12
+	p1oy = 100
+	
+	check_point_x = p1x
+	check_point_y = p1y
+
+	p1spr = 1
+	p1a = 0
+	p1size = 10
+	p1state = 0
+	p1acc = 0
+	p1jumpforce = 0
+
+	p1hasbouncedc = 0
+	p1canbouncec = 0
+
+	p1gracejumpc = 0
+	p1fallgracec = 0 -- shit code
+	p1lastwallx = 0 -- last wall bounced on 
+	p1wallx = 0 -- last wall collided
+	
+	p1nrofjumps = 2--5
+	p1currentjump = p1nrofjumps
+	p1uijump = 0
+	
+	p1deadc = 0
+end 
+
+function update_player()
+	p1ox = p1x
+	p1oy = p1y 
+
+	if (p1gracejumpc > 0)p1gracejumpc -= 1
+	p1uijump = lerp(p1uijump, 0, 0.2)
+
+	if p1state == 0 then 
+		move_player_on_ground()
+	elseif p1state == 1 then 
+		move_player_in_air()
+	elseif p1state == 2 then 
+		move_player_dead()
+	end
+
+	if p1state ~= 2 then 
+		check_tile_collisions()
+	end 
+
+	if can_player_jump() and btnp(🅾️) then 
+		jump()
+	end 
+end
+
+function can_player_jump()
+	return (p1state == 0 or (p1state == 1 and p1gracejumpc > 0)) and p1currentjump > 0
+end
+
+function can_wall_jump()
+	--stop(p1canbouncec > 0 or p1hasbouncedc > 0)
+	return (p1canbouncec > 0 or p1hasbouncedc > 0) and (p1lastwallx == 0 or abs(p1lastwallx - p1x) > 8) and p1currentjump > 0 and p1acc ~= 0
+end 
+
+function move_player_on_ground()
+	--check if you should fall
+	if p1fallgracec > 0 then
+		p1fallgracec-=1
+	elseif not is_wall(p1x,p1y+8) and not is_wall(p1x+8,p1y+8) and not is_wall(p1x+4, p1y+8) then
+		p1state = 1
+		p1spr = 1
+		p1jumpforce = 1
+		p1gracejumpc = 10
+		return
+	end
+
+	local move_dir = 0
+	if btn(➡️) then
+		move_dir = 8
+	end
+	if btn(⬅️) then
+		move_dir = -1
+	end
+
+	p1ismoving = btn(➡️) or btn(⬅️)
+
+	if p1ismoving and sin(tim * 12) == 0 then 
+		init_particle(p1x+4, p1y + 8, 0.25, rnd(1), 2.7, 6)
+	end 
+
+	if move_dir ~= 0 and not is_wall(p1x+move_dir,p1y+4) then -- then move player
+		p1x += move_dir > 0 and 0.9 or -0.9
+	end 
+end
+
+function move_player_in_air()
+	-- top
+	if (is_wall(p1x,p1y) and is_wall(p1x+8,p1y)) or is_wall(p1x+4,p1y) then
+		if(p1jumpforce > 0)p1jumpforce = 0
+		p1y = p1oy
+	end
+
+	-- side
+	local wallx = p1x + (p1acc > 0 and 8 or -1)
+	if is_wall(wallx, p1y + 4) then
+		p1acc *= -0.7
+		p1hasbouncedc = 12
+		p1wallx = wallx
+	end
+
+	-- pre check side for wall jump 
+	local wallprex = p1x + (p1acc > 0 and 16 or -9)
+	if p1canbouncec <= 0 and p1acc ~= 0 and is_wall(wallprex, p1y+4) then
+		p1canbouncec = 12
+		p1wallx = wallprex
+	end
+
+	if (p1hasbouncedc > 0)p1hasbouncedc -= 1
+	if (p1canbouncec > 0)p1canbouncec -= 1
+
+	if btnp(🅾️) and can_wall_jump() then
+		wall_jump()
+	end
+
+	p1y -= p1jumpforce
+	p1x += p1acc 
+	p1a -= p1acc / 40
+
+	if btn(➡️) and p1acc < 3 then
+		p1acc += 0.1
+	end 
+	if btn(⬅️) and p1acc > -3 then
+		p1acc -= 0.1
+	end
+
+	if (p1jumpforce > -2.5)p1jumpforce -= 0.2
+
+	--bot
+	if (is_wall(p1x,p1y+8) and is_wall(p1x+8,p1y+8)) or is_wall(p1x+4,p1y+8) then
+		land_player()
+	end
+end
+
+function move_player_dead()
+	if p1deadc > 0 then 
+		p1deadc -= 1
+		p1y -= 0.8
+		p1x += p1acc / 2
+		
+		if (p1deadc == 0)p1jumpforce = 0
+		return 
+	end 
+	if (p1jumpforce > -2.5)p1jumpforce -= 0.2
+
+	p1a -= p1acc / 40
+	p1y -= p1jumpforce
+
+	if p1y + 4 > cam_y + 128 then --outside of view
+		reset_player()
+	end 
+end
+
+function reset_player()
+	if is_checkpoint_in_another_room() then 
+		reset_camera_to_checkpoint()
+	else 
+		p1x = check_point_x
+		p1y = check_point_y
+	end
+
+	p1state = 0
+	p1acc = 0
+	p1hasbouncedc = 0
+	p1canbouncec = 0
+end 
+
+function destroy_player()
+	for i=1,6 do 
+		init_particle(p1x+4, p1y+4, i/6, 1.5 ,4, 2)
+	end
+	shake += 0.1
+	p1deadc = 20
+	p1spr = 10
+	p1state = 2
+end
+
+function jump()
+	remove_jump()
+	p1state = 1
+	p1acc = (p1x - p1ox) * 1.1
+	p1jumpforce = 2.75
+	p1gracejumpc = 0
+end 
+
+function wall_jump()
+	remove_jump()
+
+	local p1dustacc = p1acc
+	if p1canbouncec > 0 then -- jumped before colliding with wall
+		p1dustacc = -p1acc
+		--p1acc *= -0.7
+	end 
+
+	for i = 1, 3 do
+		init_particle(p1wallx, p1y + 8 + i * 3, p1dustacc < 0 and 0.5 or 0, 0.5 + rnd(0.5), 2.9, 6)
+	end
+	p1canbouncec = 0
+	p1hasbouncedc = 0
+	p1lastwallx = p1x -- might need to store the last wall collided
+	p1jumpforce = 3
+	p1acc *= 1.25
+	shake = 0.06
+end
+
+function remove_jump()
+	p1currentjump -= 1
+	p1spr = 3 + p1currentjump
+	p1uijump = 2.8
+end
+
+function land_player()
+	p1state = 0
+	p1acc = 0
+	p1y = flr((p1y)/8)*8
+	p1fallgracec = 4
+	p1a = 0
+	p1hasbouncedc = 0
+	p1canbouncec = 0
+	p1lastwallx = 0
+	shake = 0.06
+	p1currentjump = p1nrofjumps
+
+	for i = 1, 3 do 
+		init_particle(p1x-4 + i * 3, p1y + 8, 0.25, rnd(1), 4, 6)
+	end 
+end
+
+function draw_player()
+	if p1state == 0 then
+		local b = p1ismoving and sin(tim*6)*0.9 or 0
+		spr(p1ismoving and 2 or 1, p1x, p1y + b, 1, 1, sin(tim * 3) > 0)
+	elseif p1state > 0 then 
+		rspr(p1spr * 8, 0, 8, 8, p1a, p1x+4, p1y+4, p1size, p1size)
+	end
+
+	--rect(p1x, p1y, p1x + 8, p1y + 8, 3)
+	--circfill(p1x + (p1acc > 0 and 16 or -9), p1y, 3, 8)
+end
+
+-->8
+--camera
+
+function init_camera(x, y)
+	cam_x = x
+	cam_y = y
+	cam_new_x = x
+	cam_new_y = y
+	cam_checkpoint_x = x 
+	cam_checkpoint_y = y
+	
+	load_room()
+	move_camera = false
+
+	for x=0, 5 do 
+		for y=0, 5 do 
+			init_dot(4+x*24,4+y*24)
+		end
+	end
+end
+
+function update_camera()
+	foreach(dots, update_dot)
+
+	if (p1state == 2)return
+
+	if not move_camera then
+		if p1x + 4 > cam_x + 128 then 
+			reset_room()
+			cam_new_x = cam_x + 128
+			move_camera = true
+		elseif p1y + 4 > cam_y + 128 then 
+			reset_room()
+			cam_new_y = cam_y + 128
+			move_camera = true
+		elseif p1x + 4 < cam_x then 
+			reset_room()
+			cam_new_x = cam_x - 128
+			move_camera = true
+		elseif p1y + 4 < cam_y then 
+			reset_room()
+			cam_new_y = cam_y - 128
+			move_camera = true
+		end
+	else
+		cam_x = lerp(cam_x, cam_new_x, 0.3)
+		cam_y = lerp(cam_y, cam_new_y, 0.3)
+		if abs(cam_x - cam_new_x) < 1 and abs(cam_y - cam_new_y) < 1 then 
+			cam_x = cam_new_x
+			cam_y = cam_new_y
+			load_room()
+			move_camera = false
+		end
+	end
+end
+
+function set_camera_checkpoint()
+	cam_checkpoint_x = cam_x
+	cam_checkpoint_y = cam_y
+end
+
+function is_checkpoint_in_another_room()
+ 	return cam_x ~= cam_checkpoint_x or cam_y ~= cam_checkpoint_y
+end
+
+function reset_camera_to_checkpoint()
+	reset_room()
+	p1x = check_point_x
+	p1y = check_point_y
+	cam_x = cam_checkpoint_x
+	cam_y = cam_checkpoint_y
+	cam_new_x = cam_x
+	cam_new_y = cam_y
+	load_room()
+	move_camera = false
+end
+
+function draw_camera() 
+	foreach(dots, draw_dot)
+end
+
+dots={}
+function init_dot(x,y)
+	d={
+		x=x,
+		sy=y,
+		y=y,
+		s=4,
+		ss=8,
+		t=-#dots/32
+	}
+	add(dots,d)
+end
+
+function update_dot(d)
+	d.t += 0.0025
+	d.s = d.ss + sin(d.t)*0.95
+end
+
+function draw_dot(d)
+	fillp(0B1111111110010011.1) --bigger beans
+	circfill(cam_x + d.x, cam_y + d.y + sin(tim/2 + d.t)*1.1, d.s, 1)
+	fillp()
+end
+
+function reset_room()
+
+end
+
+function load_room()
+
+end
+
+-->8
+--particles
+
+particles={}
+function init_particle(x,y,angle,speed,rad,col,fill)
+	local p={
+		x = x,
+		y = y,
+		angle = angle,
+		speed = speed,
+		rad = rad,
+		col = col,
+		fill = fill or false,
+	}
+	add(particles,p)
+end
+
+function update_particle(p)
+	p.speed *= 0.92
+	p.x+=p.speed*cos(p.angle)
+	p.y+=p.speed*sin(p.angle)
+
+	local speed = p.rad > 5 and 0.2 or 0.12
+	p.rad -= speed
+	if(p.rad <=0)del(particles,p)
+end
+
+function draw_particle(p)
+	if (p.rad < 2 or p.fill)fillp(▒)
+	circfill(p.x,p.y,p.rad,p.col)
+	fillp()
+end
+
+-->8
+--utils
+function lerp(var,target,pow)
+	return var+pow*(target-var)
+end
+
+function round(a) return flr(a + 0.5) end
+
+function is_on(state) 
+	return state == 0 and "on" or "off"
+end
+
+function distance(x1,y1,x2,y2)
+	local dx, dy = x2-x1,y2-y1
+	local maskx,masky=dx>>31,dy>>31
+	local a0,b0=(dx+maskx)^^maskx,(dy+masky)^^masky
+	if a0>b0 then
+	return a0*0.9609+b0*0.3984
+	end
+	return b0*0.9609+a0*0.3984
+end
+
+function collision(x1,y1,rad1,x2,y2,rad2)
+	return distance(x1,y1,x2,y2) < (rad1 + rad2)
+end
+
+function angle(x1,y1,x2,y2)
+ 	return atan2(x1-x2,y1-y2)
+end
+
+function print_style_text(text, x, y, col, bcol, with_border, is_small)
+	if not is_small then
+		text_effects = with_border and "\^i\^w\^t" or "\^w\^t"
+		text = text_effects .. text ..  "\^-i"
+	end
+
+	local bc = bcol or 0
+
+	print(text, x-1, y, bc)
+	print(text, x+1, y, bc)
+	print(text, x, y-1, bc)
+	print(text, x, y+1, bc)
+	print(text, x, y, col)
+end
+
+-->8
+-- draw a rotated, scaled
+-- sprite at dy,dy with dw,dh
+-- as dimensions
+--     sx,sy,sw,sh - pos,dimensions
+--     in spritesheet
+--     a - angle
+--     dx,dy,dw,dh - pos,dimensions
+--     on screen
+-- serious performance issues
+-- with large values of dw,dh
+function rspr(sx,sy,sw,sh,a,dx,dy,dw,dh)
+	sx,sy,sw,sh,a,dx,dy,dw,dh=
+			sx or 0, sy or 0,
+			sw or 8, sh or 8,
+			a or 0,
+			dx or 0, dy or 0,
+			dw or 8, dh or 8
+	
+	local s1,c1 = sin(a+0.125),cos(a+0.125)
+	local half_dw,half_dh = dw/2,dh/2
+	local x1,y1 = half_dw*c1,half_dh*s1
+	local x2,y2 = half_dw*s1,half_dh*-c1
+	local x3,y3 = half_dw*-c1,half_dh*-s1
+	local x4,y4 = half_dw*-s1,half_dh*c1
+
+	local dx1,dy1=(x4-x1)/dh,(y4-y1)/dh
+	local dx2,dy2=(x3-x2)/dh,(y3-y2)/dh
+			
+	local dtxx,dtxy=(x1-x2)/dw,(y1-y2)/dw
+
+	local dsx,dsy=sw/dw,sh/dw
+	for y=0,dh-1 do
+		local ssx,px,py=sx,dx+x2,dy+y2
+		for x=0,dw-1 do
+			local col=sget(ssx,sy)
+			if (col ~= 0)pset(px,py,col)
+			px+=dtxx
+			py+=dtxy
+			ssx+=dsx
+		end
+		sy+=dsy
+		x2+=dx2
+		y2+=dy2
+	end
+end
+
+function is_wall(x,y)
+	return fget(mget(x/8,y/8),0)
+end
+
+function is_tile(x,y,tile)
+	return mget(x/8,y/8) == tile
+end
+
+function is_flag(x,y,flag)
+	return fget(mget(x/8,y/8),flag)
+end
+
+function set_tile(x,y,id)
+	mset(x/8,y/8,id)
+end
+
+function get_tile(x,y)
+	return mget(x/8,y/8)
+end
+
+shake=0
+function camera_w_shake()
+	local shakex=16-rnd(32)
+ 	local shakey=16-rnd(32)
+
+	shakex*=shake
+	shakey*=shake
+	camera(cam_x+shakex,cam_y+shakey)
+	shake=shake*0.95
+	if(shake < 0.05)shake=0
+	if(shake >= 0.3)shake=0.25
+end
+__gfx__
+00000000077777700777777077777777777777777777777777777777777777777777777775577557222222220000000000000000000000000000000000000000
+00000000777777777777777777777777777777777557777775577777755775577557755775577557200000020000000000000000000000000000000000000000
+00700700755775577557755777777777777777777557777775577777755775577557755777777777202002020000000000000000000000000000000000000000
+00077000755775577557755777777777777557777777777777755777777777777775577775577557200000020000000000000000000000000000000000000000
+00077000777777777777777777777777777557777777777777755777777777777775577775577557202222020000000000000000000000000000000000000000
+00700700777777777777777777777777777777777777755777777557755775577557755777777777202222020000000000000000000000000000000000000000
+00000000770000777700007777777777777777777777755777777557755775577557755775577557200000020000000000000000000000000000000000000000
+00000000770000770000007777777777777777777777777777777777777777777777777775577557222222220000000000000000000000000000000000000000
+ffffffff333333330033333333333300002212000222222233003333000000000000000000000000000000000000000007777770000000000000000000000000
+ff0000ff3333333303333333333333300021220088888880333333330000000000000000000aa000000000000777777007766770000000000000000000000000
+f0ffff0f333333333333333333333333002212002222222033333333000000000000000000aaaa00000aa0000776677007666670000000000000000000000000
+f0ffff0f33333333333333333333333300211200088888883333333300888888000000000aaaaaa000a7aa000766667007666670000000000000000000000000
+f0ffff0f33333333333333333333333300212200222222203333333322222220000000000aaaaaa000aaaa000766667007766770000000000000000000000000
+f0ffff0f333333333333333333333333002212000888888833333333088888880000000000aaaa00000aa0000776677007777770000000000000000000000000
+ff0000ff3333333333333333333333330021220022222220333333332222222002222222000aa000000000000777777000000000000000000000000000000000
+ffffffff333333333333333333333333002212000888888833333333088888888888888000000000000000000000000000000000000000000000000000000000
+00000000000000003333333333333333000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000003333333333333333000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000003333333333333333000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000003333333333333333000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000003333333333333333000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000003333333333333333000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000333333333333330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000033333333333300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00888800880000888888888800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+08888880888008888888888800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+88888888888888888888888800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+88888888888888888888888800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+88888888888888888888888800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+88888888888888888888888800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+88888888888888888888888800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+88888888888888888888888800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+__gff__
+0000000000000000000000000000000001010101000001000004040808000000000001010000000000000000000000000202020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+__map__
+1111111111111111111111111111111111111111111111111111111111111111000000000000000000110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1100000000000000000000000022111111111111111111111111000000000000000000000000000000110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1100000000000000000000000000221111111111111111111111000000000000001700000000170000110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+11000000001b0000000000000000002211111123000000002211000000000000001500171517151718110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1100000000000000000000000000000000000000000000000011000000000012111116111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1100000000000000000000000000000000000000000000000011000000000011111111111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1115000000000000000000000000000000001700000000000011000000000011111111111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1111130000000000001900000000001800151515000000000011000000000011111111111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1111110000000015000000000000121116111111130000000011000000000011111111111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1111110000001211161113000000111111111111110000000011000000000011111111111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1111110000002211111123000000111111111111110000000011000000000011111111111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1111230000000014140000000000111111111111110000000011000000000011111111111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1100000000000014140000000000111111111111110000000014000000001711111111111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1100000000000014140000000012111111111111111300000014000000001511111111111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1100000000121111113031303111111111111111111113000014001817151511111111111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1111111111111111113232323211111111111111111111111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
