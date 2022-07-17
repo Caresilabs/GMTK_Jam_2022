@@ -1,8 +1,10 @@
-// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
+// Modified from and credits to https://github.com/dsoft20/psx_retroshader
 
 Shader "psx/vertexlit" {
 	Properties{
 		_MainTex("Base (RGB)", 2D) = "white" {}
+		_Color ("Main Color", Color) = (0, 0, 0 ,1)
+
 	}
 		SubShader{
 			Tags { "RenderType" = "Opaque" }
@@ -75,10 +77,11 @@ Shader "psx/vertexlit" {
 					}
 
 					sampler2D _MainTex;
+					float4 _Color;
 
 					float4 frag(v2f IN) : COLOR
 					{
-						half4 c = tex2D(_MainTex, IN.uv_MainTex / IN.normal.r)*IN.color;
+						half4 c = tex2D(_MainTex, IN.uv_MainTex / IN.normal.r)*IN.color * _Color;
 						half4 color = c*(IN.colorFog.a);
 						color.rgb += IN.colorFog.rgb*(1 - IN.colorFog.a);
 						return color;

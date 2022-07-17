@@ -1,16 +1,19 @@
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 
 public enum PlayerState
 {
-
     WALKING,
     ROLLING,
+    GOAL,
 }
 
 public class PlayerManager : MonoBehaviour
 {
+
+    public static float LevelTime = 0f;
 
     [SerializeField]
     private float Speed = 10;
@@ -19,8 +22,19 @@ public class PlayerManager : MonoBehaviour
     private float MaxVelocityChange = 2;
 
     [SerializeField]
-    private float JumpVelocity = 9;
+    private float JumpVelocity = 10;
 
+    [SerializeField]
+    private float RotationForce = 60f;
+
+    [SerializeField]
+    private float BoostJumpVelocity = 10f;
+
+    [SerializeField]
+    private float JumpRandomPower = 2.5f;
+
+    [SerializeField]
+    private float[] BoostHeightByVal;
 
     [SerializeField]
     private Rigidbody Rigidbody;
@@ -35,6 +49,11 @@ public class PlayerManager : MonoBehaviour
     [SerializeField]
     private Transform CamTarget;
 
+
+    [SerializeField]
+    private Transform GoalCanvas;
+
+
     public PlayerState State { get; set; } = PlayerState.WALKING;
 
     private Camera cam;
@@ -42,21 +61,37 @@ public class PlayerManager : MonoBehaviour
     private bool isGrounded = true;
     private Vector3 groundNormal;
 
+    private Vector3 Spawn;
+
     // Start is called before the first frame update
     void Start()
     {
         cam = FindObjectOfType<Camera>();
         Rigidbody.centerOfMass = Dice.localPosition;
+
+        Spawn = transform.position;
+
+        LevelTime = 0;
     }
 
     // Update is called once per frame
     void Update()
     {
+        if (State == PlayerState.GOAL)
+        {
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                GlobalManager.Instance.NextLevel();
+            }
+            return;
+        }
+
+        LevelTime += Time.deltaTime;
         if (isGrounded && Input.GetKeyDown(KeyCode.Space))
         {
             if (State == (PlayerState.ROLLING))
             {
-                TryBoost();
+               // TryBoost();
             }
             else
             {
@@ -64,11 +99,26 @@ public class PlayerManager : MonoBehaviour
             }
         }
 
+
+        if (State == (PlayerState.ROLLING))
+        {
+            Vector3 torque = new Vector3(Input.GetAxis("VerticalSpin"), 0, -Input.GetAxis("HorizontalSpin"));
+            Rigidbody.AddTorque(cam.transform.TransformDirection(torque) * RotationForce * Time.deltaTime, ForceMode.VelocityChange);
+        }
+
+
     }
 
     private void LateUpdate()
     {
+     
+    }
 
+    public  void EnterGoal()
+    {
+        SetState(PlayerState.GOAL);
+        GoalCanvas.gameObject.SetActive(true);
+        GameObject.Find("TimeText").GetComponent<TextMeshProUGUI>().text = $"Time: {(int)LevelTime} sec";
     }
 
     void StartRolling()
@@ -78,10 +128,10 @@ public class PlayerManager : MonoBehaviour
             Legs.gameObject.SetActive(false);
             Rigidbody.constraints = RigidbodyConstraints.None;
 
-            Rigidbody.AddForce(new Vector3(0, 10f, 0), ForceMode.Impulse);
+            Rigidbody.AddForce(new Vector3(0, JumpVelocity, 0) + Legs.forward * JumpVelocity, ForceMode.Impulse);
 
-            var randomTorque = Random.insideUnitCircle * 3f;
-            Rigidbody.AddTorque(new Vector3(10 + randomTorque.x, 0, randomTorque.y), ForceMode.Impulse);
+            var randomTorque = Random.insideUnitCircle * JumpRandomPower;
+            Rigidbody.AddTorque(new Vector3(randomTorque.x, 0, randomTorque.y), ForceMode.Impulse);
             isGrounded = false;
         }
 
@@ -94,11 +144,12 @@ public class PlayerManager : MonoBehaviour
             Debug.Log(DetectSideUp());
 
             Rigidbody.constraints = RigidbodyConstraints.FreezeRotation;
-
             Rigidbody.angularVelocity = Vector3.zero;
+
+
             Snap90Deg();
 
-            Legs.rotation = Quaternion.identity;
+            Legs.rotation = Quaternion.identity * Quaternion.Euler(0, 90f, 0);
             Legs.gameObject.SetActive(true);
         }
     }
@@ -111,12 +162,24 @@ public class PlayerManager : MonoBehaviour
             boostDir.y = 0f;
             boostDir.Normalize();
 
-            var BoostPower = 13f;
+            var side = DetectSideUp();
 
-            Rigidbody.AddForce(boostDir * BoostPower + Vector3.up * DetectSideUp() * 2, ForceMode.Impulse);
-            Debug.Log("Boost");
+            var velocity = Rigidbody.velocity;
+            velocity.y = BoostHeightByVal[side];
+            Rigidbody.velocity = velocity;
+
+            Rigidbody.AddForce(boostDir * BoostJumpVelocity, ForceMode.Impulse);
+            
+            Debug.Log("Boost " + side);
         }
 
+    }
+
+    public void Kill()
+    {
+        transform.position = Spawn;
+        Rigidbody.velocity = Vector3.zero;
+        StartWalking();
     }
 
     bool SetState(PlayerState newState)
@@ -134,17 +197,23 @@ public class PlayerManager : MonoBehaviour
 
     void FixedUpdate()
     {
-        CheckGrounded();
+        if (State == PlayerState.GOAL)
+        {
+            return;
+        }
 
         Vector3 velocity = Rigidbody.velocity;
         Vector3 angularVelocity = Rigidbody.angularVelocity;
 
-        if (isGrounded && State == PlayerState.ROLLING && angularVelocity.magnitude < 0.2f && velocity.y < 0.2f)
+        if (isGrounded && State == PlayerState.ROLLING && angularVelocity.magnitude < 0.3f && velocity.y < 0.4f)
         {
             Debug.Log("WALK START");
 
+            TryBoost();
             StartWalking();
         }
+
+        CheckGrounded();
 
 
         Vector3 targetVelocity = new Vector3(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical"));
@@ -172,7 +241,7 @@ public class PlayerManager : MonoBehaviour
 
         var transformedVelocity = CamTarget.InverseTransformDirection(velocity);
 
-        var change = isGrounded ? MaxVelocityChange : MaxVelocityChange * 0.3f;
+        var change = isGrounded && State == PlayerState.WALKING ? MaxVelocityChange : MaxVelocityChange * 0.2f;
         if (targetVelocity == Vector3.zero)
         {
             change = 0f;// MaxVelocityChange * (isGrounded ? 0.5f : 0);
@@ -186,6 +255,7 @@ public class PlayerManager : MonoBehaviour
 
         var transformedVelocityChange = CamTarget.TransformDirection(velocityChange);
 
+      //  Debug.Log(velocityChange);
         //if (groundNormal != Vector3.zero && Vector3.Angle(groundNormal, transformedVelocityChange) - 90 > MaxSlopeAngle)
         // {
         //    transformedVelocityChange = Vector3.zero;
@@ -200,6 +270,7 @@ public class PlayerManager : MonoBehaviour
         {
             //Vector3 forwardsVector = Rigidbody.velocity.normalized;
             //  transform.rotation = Quaternion.Lerp(transform.rotation, Quaternion.LookRotation(forwardsVector, Vector3.up) * Quaternion.Euler(90, 0, 0), Time.deltaTime * 30);
+            transform.Rotate(Vector3.up, Quaternion.LookRotation(velocity).eulerAngles.y - Legs.rotation.eulerAngles.y, Space.World);
             //
         }
 
@@ -209,7 +280,7 @@ public class PlayerManager : MonoBehaviour
             //lookAt.x = 0;
             //lookAt.z = 0;
 
-            CamTarget.rotation = Quaternion.Euler(0, Quaternion.LookRotation(lookAt).eulerAngles.y, 0);
+            CamTarget.rotation = Quaternion.Lerp(CamTarget.rotation, Quaternion.Euler(0, Quaternion.LookRotation(lookAt).eulerAngles.y, 0), Time.fixedDeltaTime * 2f);
         }
 
         //  Rigidbody.MovePosition(transform.position + targetVelocity);
@@ -223,7 +294,7 @@ public class PlayerManager : MonoBehaviour
 
     void CheckGrounded()
     {
-        var colliderRadius = 0.5f + (State == PlayerState.ROLLING ? 0 : 0.3f);
+        var colliderRadius = 0.5f + (State == PlayerState.ROLLING ? 0.23f : 0.33f);
 
         RaycastHit groundInfo;
         bool hit = Physics.SphereCast(transform.position, 0.1f,
@@ -252,6 +323,11 @@ public class PlayerManager : MonoBehaviour
         }
     }
 
+    private void OnCollisionEnter(Collision collision)
+    {
+        if (collision.transform.CompareTag("Death"))
+            Kill();
+    }
 
     void Snap90Deg()
     {
@@ -270,7 +346,7 @@ public class PlayerManager : MonoBehaviour
         {
             if (Vector3.Dot(groundNormal, transform.right) > 0)
             {
-                return 2;
+                return 4;
             }
             else
             {
@@ -281,22 +357,22 @@ public class PlayerManager : MonoBehaviour
         {
             if (Vector3.Dot(groundNormal, transform.up) > 0)
             {
-                return 4;
+                return 1;
             }
             else
             {
-                return 2;// FaceRepresent[OpposingDirectionValues.y];
+                return 6;// FaceRepresent[OpposingDirectionValues.y];
             }
         }
         else if (Vector3.Cross(groundNormal, transform.forward).magnitude < 0.5f) //z axis
         {
             if (Vector3.Dot(groundNormal, transform.forward) > 0)
             {
-                return 1;
+                return 5;
             }
             else
             {
-                return 6;// FaceRepresent[OpposingDirectionValues.z];
+                return 2;// FaceRepresent[OpposingDirectionValues.z];
             }
         }
 
