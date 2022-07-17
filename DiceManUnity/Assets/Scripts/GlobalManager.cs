@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -11,8 +9,15 @@ public class GlobalManager : MonoBehaviour
 
     private int currentLevel = 0;
 
-    private readonly int maxLevel = 1;
 
+
+
+    private const int maxLevel = 3;
+
+    public static float[] LevelTimes = new float[maxLevel];
+
+
+    public RenderTexture GameTexture;
 
 
     private void Awake()
@@ -25,8 +30,18 @@ public class GlobalManager : MonoBehaviour
         {
             DontDestroyOnLoad(gameObject);
             _instance = this;
+
+            GameTexture.height = (int)((Screen.height / (float)Screen.width ) * GameTexture.width);
         }
     }
+
+
+    public static void PlaySFX(AudioClip clip)
+    {
+        if (clip)
+            Instance.transform.GetChild(1).GetComponent<AudioSource>().PlayOneShot(clip);
+    }
+   
 
 
     public void MainMenu()
@@ -37,6 +52,16 @@ public class GlobalManager : MonoBehaviour
 
     public void NextLevel()
     {
+        if (currentLevel == 0)
+        {
+            // Reset times
+            for (int i = 0; i < maxLevel; i++)
+            {
+                LevelTimes[i] = 0;
+            }
+        }
+
+
         currentLevel++;
 
         if (currentLevel > maxLevel)
@@ -46,6 +71,12 @@ public class GlobalManager : MonoBehaviour
         }
 
         SceneManager.LoadSceneAsync("Level"+ currentLevel);
+    }
+
+    public void SetTime(float time)
+    {
+        if (currentLevel > 0)
+            LevelTimes[currentLevel - 1] = time;
     }
 
 
@@ -58,6 +89,9 @@ public class GlobalManager : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        }
     }
 }

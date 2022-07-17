@@ -1866,7 +1866,7 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1638640158305625694}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 0.42548, y: 0.42548, z: 0.42548}
   m_ConstrainProportionsScale: 0
@@ -1892,7 +1892,7 @@ Transform:
   - {fileID: 920228543}
   - {fileID: 784608201}
   - {fileID: 546662099}
-  m_Father: {fileID: 1756239988465893984}
+  m_Father: {fileID: 688507805435244405}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &6974621949538493196
@@ -1954,10 +1954,56 @@ BoxCollider:
   m_GameObject: {fileID: 1638640158305625694}
   m_Material: {fileID: 13400000, guid: 90406231b3e63484ab0e72ae2643faf1, type: 2}
   m_IsTrigger: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 2
   m_Size: {x: 1.9999999, y: 1.9999999, z: 1.9999999}
   m_Center: {x: 0, y: 0.00000023841858, z: -0.00000029802322}
+--- !u!1 &1728936614652825987
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 688507805435244405}
+  - component: {fileID: 5860266218477048481}
+  m_Layer: 7
+  m_Name: Dice
+  m_TagString: Player
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &688507805435244405
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1728936614652825987}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 3846989666566706596}
+  m_Father: {fileID: 1756239988465893984}
+  m_RootOrder: 0
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &5860266218477048481
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1728936614652825987}
+  m_Material: {fileID: 13400000, guid: 90406231b3e63484ab0e72ae2643faf1, type: 2}
+  m_IsTrigger: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Size: {x: 0.85096, y: 0.85096, z: 0.85096}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1756239988086437703
 GameObject:
   m_ObjectHideFlags: 0
@@ -2020,7 +2066,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 3846989666566706596}
+  - {fileID: 688507805435244405}
   - {fileID: 1756239988086437702}
   m_Father: {fileID: 0}
   m_RootOrder: 0
@@ -2045,17 +2091,19 @@ MonoBehaviour:
   JumpRandomPower: 5.3
   BoostHeightByVal:
   - 0
-  - 5
-  - 6
-  - 9.5
-  - 10.5
-  - 11.5
-  - 12.5
+  - 7
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
   Rigidbody: {fileID: 1756239988465893989}
   Legs: {fileID: 1756239988086437702}
   Dice: {fileID: 3846989666566706596}
   CamTarget: {fileID: 0}
-  GoalCanvas: {fileID: 0}
+  JumpSound: {fileID: 8300000, guid: ff9387357b1fb4813b981b598cfe7406, type: 3}
+  BoostSound: {fileID: 8300000, guid: 36ce8eb58b82d459185b3ca387c72691, type: 3}
+  WinSound: {fileID: 8300000, guid: bb25e8ec72b374d178535de1c0b8c4b2, type: 3}
 --- !u!54 &1756239988465893989
 Rigidbody:
   m_ObjectHideFlags: 0

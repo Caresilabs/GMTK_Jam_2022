@@ -50,10 +50,6 @@ public class PlayerManager : MonoBehaviour
     private Transform CamTarget;
 
 
-    [SerializeField]
-    private Transform GoalCanvas;
-
-
     public PlayerState State { get; set; } = PlayerState.WALKING;
 
     private Camera cam;
@@ -62,6 +58,13 @@ public class PlayerManager : MonoBehaviour
     private Vector3 groundNormal;
 
     private Vector3 Spawn;
+    private Vector3 DiceDefaultScale;
+
+
+    [Header("Audio")]
+    public AudioClip JumpSound;
+    public AudioClip BoostSound;
+    public AudioClip WinSound;
 
     // Start is called before the first frame update
     void Start()
@@ -70,6 +73,7 @@ public class PlayerManager : MonoBehaviour
         Rigidbody.centerOfMass = Dice.localPosition;
 
         Spawn = transform.position;
+        DiceDefaultScale = Dice.localScale;
 
         LevelTime = 0;
     }
@@ -91,7 +95,7 @@ public class PlayerManager : MonoBehaviour
         {
             if (State == (PlayerState.ROLLING))
             {
-               // TryBoost();
+                // TryBoost();
             }
             else
             {
@@ -105,34 +109,50 @@ public class PlayerManager : MonoBehaviour
             Vector3 torque = new Vector3(Input.GetAxis("VerticalSpin"), 0, -Input.GetAxis("HorizontalSpin"));
             Rigidbody.AddTorque(cam.transform.TransformDirection(torque) * RotationForce * Time.deltaTime, ForceMode.VelocityChange);
         }
+        else if (State == (PlayerState.WALKING))
+        {
+            //transform.Rotate(cam.transform.forward, 2f);
+            transform.localScale = Vector3.one + (Vector3.right * Mathf.Sin(Time.timeSinceLevelLoad * 10f) * 0.05f);
+        }
+       
 
+        Dice.localScale = Vector3.Lerp(Dice.localScale, DiceDefaultScale, Time.deltaTime * 15f);
 
     }
 
     private void LateUpdate()
     {
-     
+
     }
 
-    public  void EnterGoal()
+    public void EnterGoal()
     {
-        SetState(PlayerState.GOAL);
-        GoalCanvas.gameObject.SetActive(true);
-        GameObject.Find("TimeText").GetComponent<TextMeshProUGUI>().text = $"Time: {(int)LevelTime} sec";
+        if (SetState(PlayerState.GOAL))
+        {
+            GameObject.Find("GameCanvas").transform.GetChild(1).gameObject.SetActive(true);
+            GameObject.Find("TimeText").GetComponent<TextMeshProUGUI>().text = $"Time: {(int)LevelTime} sec";
+            GlobalManager.Instance.SetTime(LevelTime);
+            GameObject.Find("HUD").SetActive(false);
+            GlobalManager.PlaySFX(WinSound);
+        }
     }
 
     void StartRolling()
     {
         if (SetState(PlayerState.ROLLING))
         {
+            transform.localScale = Vector3.one;
             Legs.gameObject.SetActive(false);
             Rigidbody.constraints = RigidbodyConstraints.None;
 
-            Rigidbody.AddForce(new Vector3(0, JumpVelocity, 0) + Legs.forward * JumpVelocity, ForceMode.Impulse);
+            Rigidbody.AddForce(new Vector3(0, JumpVelocity, 0) + Legs.forward * JumpVelocity * 0.5f, ForceMode.Impulse);
 
             var randomTorque = Random.insideUnitCircle * JumpRandomPower;
             Rigidbody.AddTorque(new Vector3(randomTorque.x, 0, randomTorque.y), ForceMode.Impulse);
             isGrounded = false;
+            GlobalManager.PlaySFX(JumpSound);
+
+            Dice.localScale = DiceDefaultScale * 1.35f;
         }
 
     }
@@ -151,6 +171,9 @@ public class PlayerManager : MonoBehaviour
 
             Legs.rotation = Quaternion.identity * Quaternion.Euler(0, 90f, 0);
             Legs.gameObject.SetActive(true);
+
+            Dice.localScale = DiceDefaultScale * 0.8f;
+
         }
     }
 
@@ -169,8 +192,11 @@ public class PlayerManager : MonoBehaviour
             Rigidbody.velocity = velocity;
 
             Rigidbody.AddForce(boostDir * BoostJumpVelocity, ForceMode.Impulse);
-            
+
             Debug.Log("Boost " + side);
+            GlobalManager.PlaySFX(BoostSound);
+
+            Dice.localScale = DiceDefaultScale * (1 + (0.8f* side / 6f));
         }
 
     }
@@ -179,12 +205,13 @@ public class PlayerManager : MonoBehaviour
     {
         transform.position = Spawn;
         Rigidbody.velocity = Vector3.zero;
+        State = PlayerState.ROLLING;
         StartWalking();
     }
 
     bool SetState(PlayerState newState)
     {
-        if (newState == State)
+        if (newState == State || State == PlayerState.GOAL)
         {
             return false;
         }
@@ -205,12 +232,12 @@ public class PlayerManager : MonoBehaviour
         Vector3 velocity = Rigidbody.velocity;
         Vector3 angularVelocity = Rigidbody.angularVelocity;
 
-        if (isGrounded && State == PlayerState.ROLLING && angularVelocity.magnitude < 0.3f && velocity.y < 0.4f)
+        if (isGrounded && State == PlayerState.ROLLING && angularVelocity.magnitude < 0.35f) //&& velocity.y < 0.4f
         {
             Debug.Log("WALK START");
 
-            TryBoost();
             StartWalking();
+            TryBoost();
         }
 
         CheckGrounded();
@@ -255,7 +282,7 @@ public class PlayerManager : MonoBehaviour
 
         var transformedVelocityChange = CamTarget.TransformDirection(velocityChange);
 
-      //  Debug.Log(velocityChange);
+        //  Debug.Log(velocityChange);
         //if (groundNormal != Vector3.zero && Vector3.Angle(groundNormal, transformedVelocityChange) - 90 > MaxSlopeAngle)
         // {
         //    transformedVelocityChange = Vector3.zero;
@@ -294,7 +321,7 @@ public class PlayerManager : MonoBehaviour
 
     void CheckGrounded()
     {
-        var colliderRadius = 0.5f + (State == PlayerState.ROLLING ? 0.23f : 0.33f);
+        var colliderRadius = 0.5f + (State == PlayerState.ROLLING ? 0.23f : 0.5f);
 
         RaycastHit groundInfo;
         bool hit = Physics.SphereCast(transform.position, 0.1f,
@@ -327,6 +354,8 @@ public class PlayerManager : MonoBehaviour
     {
         if (collision.transform.CompareTag("Death"))
             Kill();
+        //else
+         //   Dice.localScale = Vector3.one * 0.9f;
     }
 
     void Snap90Deg()
@@ -341,43 +370,44 @@ public class PlayerManager : MonoBehaviour
     int DetectSideUp()
     {
 
-        if (Vector3.Cross(groundNormal, transform.right).magnitude < 0.5f) //x axis a.b.sin theta <45
-                                                                         //if ((int) Vector3.Cross(Vector3.up, transform.right).magnitude == 0) //Previously
+        var normal = Vector3.up;
+
+        if (Vector3.Cross(normal, transform.right).magnitude < 0.5f) //x axis
         {
-            if (Vector3.Dot(groundNormal, transform.right) > 0)
+            if (Vector3.Dot(normal, transform.right) > 0)
             {
                 return 4;
             }
             else
             {
-                return 3; // FaceRepresent[OpposingDirectionValues.x];
+                return 3;
             }
         }
-        else if (Vector3.Cross(groundNormal, transform.up).magnitude < 0.5f) //y axis
+        else if (Vector3.Cross(normal, transform.up).magnitude < 0.5f) //y axis
         {
-            if (Vector3.Dot(groundNormal, transform.up) > 0)
+            if (Vector3.Dot(normal, transform.up) > 0)
             {
                 return 1;
             }
             else
             {
-                return 6;// FaceRepresent[OpposingDirectionValues.y];
+                return 6;
             }
         }
-        else if (Vector3.Cross(groundNormal, transform.forward).magnitude < 0.5f) //z axis
+        else if (Vector3.Cross(normal, transform.forward).magnitude < 0.5f) //z axis
         {
-            if (Vector3.Dot(groundNormal, transform.forward) > 0)
+            if (Vector3.Dot(normal, transform.forward) > 0)
             {
                 return 5;
             }
             else
             {
-                return 2;// FaceRepresent[OpposingDirectionValues.z];
+                return 2;
             }
         }
 
         return 0;
 
-       
+
     }
 }
